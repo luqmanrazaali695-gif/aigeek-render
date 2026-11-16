@@ -1,0 +1,88 @@
+name: 3D Kaz render
+on:
+  workflow_dispatch:
+    inputs:
+      project:
+        description: "Project folder inside repo (contains shots.js)"
+        required: true
+        default: "project"
+      shards:
+        description: "Shot index ranges, JSON array of arrays"
+        required: true
+        default: '[[0,14],[15,29],[30,44],[45,59]]'
+      size:
+        description: "Render size"
+        required: false
+        default: "1280x720"
+      stills_only:
+        description: "true = only stills QC sheet, no render"
+        required: false
+        default: "false"
+
+jobs:
+  stills:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install deps + Chromium
+        working-directory: studio
+        run: |
+          npm ci || npm install
+          npx playwright install --with-deps chromium
+      - name: Stills QC sheet
+        run: node studio/render.js ${{ github.event.inputs.project }} --stills
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stills-sheet
+          path: ${{ github.event.inputs.project }}/stills/
+
+  render:
+    if: ${{ github.event.inputs.stills_only != 'true' }}
+    needs: stills
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install deps + Chromium
+        working-directory: studio
+        run: |
+          npm ci || npm install
+          npx playwright install --with-deps chromium
+      - name: Render all shots
+        run: node studio/render.js ${{ github.event.inputs.project }} --size ${{ github.event.inputs.size }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shots-all
+          path: ${{ github.event.inputs.project }}/out/shots/
+
+  join:
+    if: ${{ github.event.inputs.stills_only != 'true' }}
+    needs: render
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Download all shards
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+          pattern: shots-*
+          merge-multiple: true
+      - name: List file (alphabetical = shot order)
+        run: |
+          cd artifacts
+          ls shot*.mp4 | sort | sed "s/^/file '/; s/$/'/" > list.txt
+          ffmpeg -y -v error -f concat -safe 0 -i list.txt -c copy -movflags +faststart final-silent.mp4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: final-video
+          path: artifacts/final-silent.mp4

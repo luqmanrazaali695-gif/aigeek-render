@@ -1,0 +1,4 @@
+file 'D:/aigeek/studio/examples/luck-demo/stills/shot000.jpg'
+file 'D:/aigeek/studio/examples/luck-demo/stills/shot001.jpg'
+file 'D:/aigeek/studio/examples/luck-demo/stills/shot002.jpg'
+file 'D:/aigeek/studio/examples/luck-demo/stills/shot003.jpg'
